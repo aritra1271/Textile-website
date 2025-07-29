@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   email TEXT UNIQUE NOT NULL,
   full_name TEXT,
   avatar_url TEXT,
-  is_admin BOOLEAN DEFAULT FALSE,
+  role TEXT DEFAULT 'customer' CHECK (role IN ('customer', 'admin')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS product_views (
   product_id INTEGER REFERENCES products(id) ON DELETE CASCADE NOT NULL,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   ip_address INET DEFAULT '127.0.0.1',
+  user_agent TEXT,
   viewed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -116,6 +117,7 @@ CREATE TABLE IF NOT EXISTS website_visits (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   ip_address INET DEFAULT '127.0.0.1',
+  user_agent TEXT,
   page_url TEXT NOT NULL,
   visited_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -134,6 +136,39 @@ INSERT INTO business_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 -- Insert default about content
 INSERT INTO about_content (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Insert some sample products
+INSERT INTO products (name, description, price, original_price, category, colors, sizes, images, stock, features, specifications, is_featured) VALUES 
+('Premium Athletic Shorts', 'High-performance shorts designed for intense workouts and training sessions. Made with moisture-wicking fabric for maximum comfort.', 1299, 1599, 'Shorts', 
+ ARRAY['Black', 'Navy', 'Red'], ARRAY['S', 'M', 'L', 'XL'], 
+ ARRAY['/placeholder.svg?height=300&width=300'], 50,
+ ARRAY['Moisture-wicking fabric', 'Quick-dry technology', 'Comfortable waistband', 'Side pockets'],
+ '{"Material": "Polyester blend", "Care": "Machine washable", "Fit": "Regular", "Weight": "150g"}', true),
+
+('Training Joggers', 'Comfortable joggers perfect for training sessions and casual wear. Features elastic waistband and tapered fit for modern style.', 1899, 2299, 'Joggers',
+ ARRAY['Black', 'Grey', 'Navy'], ARRAY['S', 'M', 'L', 'XL', 'XXL'],
+ ARRAY['/placeholder.svg?height=300&width=300'], 30,
+ ARRAY['Elastic waistband', 'Side pockets', 'Tapered fit', 'Soft cotton blend'],
+ '{"Material": "Cotton blend", "Care": "Machine washable", "Fit": "Slim", "Weight": "280g"}', true),
+
+('Compression Leggings', 'High-compression leggings for maximum support during workouts. Perfect for yoga, running, and gym sessions.', 1699, 1999, 'Leggings',
+ ARRAY['Black', 'Navy', 'Purple'], ARRAY['XS', 'S', 'M', 'L', 'XL'],
+ ARRAY['/placeholder.svg?height=300&width=300'], 40,
+ ARRAY['Compression fit', 'Moisture-wicking', 'Four-way stretch', 'High waistband'],
+ '{"Material": "Spandex blend", "Care": "Hand wash recommended", "Fit": "Compression", "Weight": "200g"}', false),
+
+('Professional Track Pants', 'Professional-grade track pants for serious athletes. Lightweight and breathable with zippered pockets.', 2199, 2599, 'Track Pants',
+ ARRAY['Black', 'Navy', 'Red', 'White'], ARRAY['S', 'M', 'L', 'XL', 'XXL'],
+ ARRAY['/placeholder.svg?height=300&width=300'], 25,
+ ARRAY['Lightweight fabric', 'Zippered pockets', 'Adjustable waistband', 'Breathable mesh panels'],
+ '{"Material": "Polyester", "Care": "Machine washable", "Fit": "Athletic", "Weight": "220g"}', true),
+
+('Cozy Sweatpants', 'Ultra-comfortable sweatpants for relaxation and casual wear. Perfect for lounging or light activities.', 1599, 1899, 'Sweatpants',
+ ARRAY['Grey', 'Black', 'Navy'], ARRAY['S', 'M', 'L', 'XL'],
+ ARRAY['/placeholder.svg?height=300&width=300'], 35,
+ ARRAY['Soft fleece lining', 'Drawstring waist', 'Ribbed cuffs', 'Kangaroo pocket'],
+ '{"Material": "Cotton fleece", "Care": "Machine washable", "Fit": "Relaxed", "Weight": "320g"}', false)
+ON CONFLICT DO NOTHING;
 
 -- Create function to update category product count
 CREATE OR REPLACE FUNCTION update_category_product_count()
@@ -230,7 +265,7 @@ CREATE POLICY "Admins can view all profiles" ON profiles
   FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM profiles 
-      WHERE id = auth.uid() AND is_admin = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -244,7 +279,7 @@ CREATE POLICY "Admins can manage products" ON products
   FOR ALL USING (
     EXISTS (
       SELECT 1 FROM profiles 
-      WHERE id = auth.uid() AND is_admin = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -258,7 +293,7 @@ CREATE POLICY "Admins can manage categories" ON categories
   FOR ALL USING (
     EXISTS (
       SELECT 1 FROM profiles 
-      WHERE id = auth.uid() AND is_admin = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -272,7 +307,7 @@ CREATE POLICY "Admins can update business settings" ON business_settings
   FOR UPDATE USING (
     EXISTS (
       SELECT 1 FROM profiles 
-      WHERE id = auth.uid() AND is_admin = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -286,7 +321,7 @@ CREATE POLICY "Admins can update about content" ON about_content
   FOR UPDATE USING (
     EXISTS (
       SELECT 1 FROM profiles 
-      WHERE id = auth.uid() AND is_admin = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -309,7 +344,7 @@ CREATE POLICY "Admins can view analytics" ON product_views
   FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM profiles 
-      WHERE id = auth.uid() AND is_admin = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -322,7 +357,7 @@ CREATE POLICY "Admins can view visits" ON website_visits
   FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM profiles 
-      WHERE id = auth.uid() AND is_admin = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -342,3 +377,24 @@ CREATE INDEX IF NOT EXISTS idx_wishlists_product_id ON wishlists(product_id);
 CREATE INDEX IF NOT EXISTS idx_product_views_product_id ON product_views(product_id);
 CREATE INDEX IF NOT EXISTS idx_product_views_viewed_at ON product_views(viewed_at);
 CREATE INDEX IF NOT EXISTS idx_website_visits_visited_at ON website_visits(visited_at);
+
+-- Update category product counts
+UPDATE categories SET product_count = (
+  SELECT COUNT(*) FROM products WHERE category = categories.name AND is_active = true
+);
+
+-- Insert some sample analytics data
+INSERT INTO product_views (product_id, viewed_at) 
+SELECT 
+  p.id,
+  NOW() - (random() * interval '30 days')
+FROM products p, generate_series(1, 5) 
+ON CONFLICT DO NOTHING;
+
+INSERT INTO website_visits (page_url, visited_at)
+VALUES 
+  ('/', NOW() - interval '1 hour'),
+  ('/products', NOW() - interval '2 hours'),
+  ('/about', NOW() - interval '3 hours'),
+  ('/categories', NOW() - interval '4 hours')
+ON CONFLICT DO NOTHING;

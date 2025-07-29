@@ -105,6 +105,34 @@ export interface WebsiteVisit {
   visited_at: string
 }
 
+// Helper function to check if table exists
+async function tableExists(tableName: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from(tableName).select("*").limit(1)
+    return !error || error.code !== "42P01"
+  } catch {
+    return false
+  }
+}
+
+// Test database connection
+export async function testDatabaseConnection() {
+  try {
+    const { data, error } = await supabase.from("products").select("count", { count: "exact" }).limit(1)
+
+    if (error) {
+      console.error("Database connection test failed:", error)
+      return { success: false, error: error.message }
+    }
+
+    console.log("Database connection successful")
+    return { success: true, count: data }
+  } catch (err: any) {
+    console.error("Database connection error:", err)
+    return { success: false, error: err.message }
+  }
+}
+
 // Product functions
 export async function getProducts(filters?: {
   category?: string
@@ -114,136 +142,295 @@ export async function getProducts(filters?: {
   colors?: string[]
   sortBy?: string
 }) {
-  let query = supabase.from("products").select("*").eq("is_active", true)
+  try {
+    let query = supabase.from("products").select("*").eq("is_active", true)
 
-  if (filters?.category && filters.category !== "all") {
-    query = query.eq("category", filters.category)
-  }
-
-  if (filters?.search) {
-    query = query.ilike("name", `%${filters.search}%`)
-  }
-
-  if (filters?.minPrice) {
-    query = query.gte("price", filters.minPrice)
-  }
-
-  if (filters?.maxPrice) {
-    query = query.lte("price", filters.maxPrice)
-  }
-
-  if (filters?.sortBy) {
-    switch (filters.sortBy) {
-      case "price-low":
-        query = query.order("price", { ascending: true })
-        break
-      case "price-high":
-        query = query.order("price", { ascending: false })
-        break
-      case "rating":
-        query = query.order("rating", { ascending: false })
-        break
-      case "newest":
-        query = query.order("created_at", { ascending: false })
-        break
-      default:
-        query = query.order("created_at", { ascending: false })
+    if (filters?.category && filters.category !== "all") {
+      query = query.eq("category", filters.category)
     }
-  }
 
-  const { data, error } = await query
+    if (filters?.search) {
+      query = query.ilike("name", `%${filters.search}%`)
+    }
 
-  if (error) {
-    if (error.code === "42P01") return []
-    throw error
+    if (filters?.minPrice) {
+      query = query.gte("price", filters.minPrice)
+    }
+
+    if (filters?.maxPrice) {
+      query = query.lte("price", filters.maxPrice)
+    }
+
+    if (filters?.sortBy) {
+      switch (filters.sortBy) {
+        case "price-low":
+          query = query.order("price", { ascending: true })
+          break
+        case "price-high":
+          query = query.order("price", { ascending: false })
+          break
+        case "rating":
+          query = query.order("rating", { ascending: false })
+          break
+        case "newest":
+          query = query.order("created_at", { ascending: false })
+          break
+        default:
+          query = query.order("created_at", { ascending: false })
+      }
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error("Error fetching products:", error)
+      if (error.code === "42P01") return []
+      throw new Error(`Failed to fetch products: ${error.message}`)
+    }
+
+    return data as Product[]
+  } catch (err: any) {
+    console.error("getProducts error:", err)
+    return []
   }
-  return data as Product[]
 }
 
 export async function searchProducts(query: string) {
   if (!query.trim()) return []
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("id, name, price, images, category")
-    .eq("is_active", true)
-    .or(`name.ilike.%${query}%, description.ilike.%${query}%, category.ilike.%${query}%`)
-    .limit(10)
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, price, images, category")
+      .eq("is_active", true)
+      .or(`name.ilike.%${query}%, description.ilike.%${query}%, category.ilike.%${query}%`)
+      .limit(10)
 
-  if (error) {
-    console.error("Search error:", error)
+    if (error) {
+      console.error("Search error:", error)
+      return []
+    }
+    return data
+  } catch (err: any) {
+    console.error("searchProducts error:", err)
     return []
   }
-  return data
 }
 
 export async function getProduct(id: number) {
-  const { data, error } = await supabase.from("products").select("*").eq("id", id).eq("is_active", true).single()
+  try {
+    const { data, error } = await supabase.from("products").select("*").eq("id", id).eq("is_active", true).single()
 
-  if (error) {
-    if (error.code === "42P01") return null
-    throw error
+    if (error) {
+      console.error("Error fetching product:", error)
+      if (error.code === "42P01" || error.code === "PGRST116") return null
+      throw new Error(`Failed to fetch product: ${error.message}`)
+    }
+    return data as Product
+  } catch (err: any) {
+    console.error("getProduct error:", err)
+    return null
   }
-  return data as Product
 }
 
 export async function getFeaturedProducts() {
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("is_active", true)
-    .eq("is_featured", true)
-    .order("created_at", { ascending: false })
-    .limit(8)
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("is_active", true)
+      .eq("is_featured", true)
+      .order("created_at", { ascending: false })
+      .limit(8)
 
-  if (error) {
-    if (error.code === "42P01") return []
-    throw error
+    if (error) {
+      console.error("Error fetching featured products:", error)
+      if (error.code === "42P01") return []
+      throw new Error(`Failed to fetch featured products: ${error.message}`)
+    }
+    return data as Product[]
+  } catch (err: any) {
+    console.error("getFeaturedProducts error:", err)
+    return []
   }
-  return data as Product[]
 }
 
 export async function createProduct(product: Omit<Product, "id" | "created_at" | "updated_at">) {
-  console.log("Creating product:", product)
+  console.log("=== PRODUCT CREATION START ===")
+  console.log("Input product data:", JSON.stringify(product, null, 2))
 
-  const { data, error } = await supabase.from("products").insert([product]).select().single()
+  try {
+    // Test database connection first
+    const connectionTest = await testDatabaseConnection()
+    if (!connectionTest.success) {
+      throw new Error(`Database connection failed: ${connectionTest.error}`)
+    }
 
-  if (error) {
-    console.error("Product creation error:", error)
-    throw error
+    // Validate required fields
+    const validationErrors: string[] = []
+
+    if (!product.name || typeof product.name !== "string" || product.name.trim().length < 2) {
+      validationErrors.push("Product name must be at least 2 characters long")
+    }
+
+    if (!product.description || typeof product.description !== "string" || product.description.trim().length < 10) {
+      validationErrors.push("Product description must be at least 10 characters long")
+    }
+
+    if (!product.category || typeof product.category !== "string") {
+      validationErrors.push("Product category is required")
+    }
+
+    if (!product.price || typeof product.price !== "number" || product.price <= 0) {
+      validationErrors.push("Product price must be a number greater than 0")
+    }
+
+    if (typeof product.stock !== "number" || product.stock < 0) {
+      validationErrors.push("Stock quantity must be a non-negative number")
+    }
+
+    if (validationErrors.length > 0) {
+      throw new Error(`Validation failed: ${validationErrors.join(", ")}`)
+    }
+
+    // Prepare product data with proper defaults
+    const productData = {
+      name: product.name.trim(),
+      description: product.description.trim(),
+      price: Number(product.price),
+      original_price: product.original_price ? Number(product.original_price) : null,
+      category: product.category,
+      colors: Array.isArray(product.colors) && product.colors.length > 0 ? product.colors : ["Black"],
+      sizes: Array.isArray(product.sizes) && product.sizes.length > 0 ? product.sizes : ["M"],
+      images:
+        Array.isArray(product.images) && product.images.length > 0
+          ? product.images
+          : ["/placeholder.svg?height=300&width=300"],
+      stock: Number(product.stock),
+      rating: Number(product.rating) || 4.5,
+      review_count: Number(product.review_count) || 0,
+      features:
+        Array.isArray(product.features) && product.features.length > 0
+          ? product.features
+          : ["High Quality", "Comfortable Fit"],
+      specifications:
+        product.specifications &&
+        typeof product.specifications === "object" &&
+        Object.keys(product.specifications).length > 0
+          ? product.specifications
+          : { Material: "Cotton Blend", Care: "Machine Wash" },
+      is_active: Boolean(product.is_active),
+      is_featured: Boolean(product.is_featured),
+      discount_percentage:
+        product.original_price && product.price
+          ? Math.round(
+              ((Number(product.original_price) - Number(product.price)) / Number(product.original_price)) * 100,
+            )
+          : 0,
+    }
+
+    console.log("Processed product data:", JSON.stringify(productData, null, 2))
+
+    // Insert into database
+    const { data, error } = await supabase.from("products").insert([productData]).select().single()
+
+    if (error) {
+      console.error("=== SUPABASE INSERT ERROR ===")
+      console.error("Error code:", error.code)
+      console.error("Error message:", error.message)
+      console.error("Error details:", error.details)
+      console.error("Error hint:", error.hint)
+      console.error("Full error object:", JSON.stringify(error, null, 2))
+
+      // Provide more specific error messages
+      let errorMessage = "Failed to create product"
+
+      if (error.code === "42P01") {
+        errorMessage = "Products table does not exist. Please run the database setup script."
+      } else if (error.code === "23505") {
+        errorMessage = "A product with this name already exists."
+      } else if (error.code === "23514") {
+        errorMessage = "Product data violates database constraints. Please check your input values."
+      } else if (error.code === "42501") {
+        errorMessage = "Permission denied. Please check your database permissions."
+      } else if (error.message) {
+        errorMessage = `Database error: ${error.message}`
+      }
+
+      throw new Error(errorMessage)
+    }
+
+    if (!data) {
+      throw new Error("Product was created but no data was returned")
+    }
+
+    console.log("=== PRODUCT CREATION SUCCESS ===")
+    console.log("Created product:", JSON.stringify(data, null, 2))
+
+    return data as Product
+  } catch (err: any) {
+    console.error("=== PRODUCT CREATION ERROR ===")
+    console.error("Error type:", typeof err)
+    console.error("Error message:", err?.message)
+    console.error("Error stack:", err?.stack)
+    console.error("Full error:", JSON.stringify(err, null, 2))
+
+    // Re-throw with a more descriptive message
+    const errorMessage = err?.message || "Unknown error occurred while creating product"
+    throw new Error(errorMessage)
   }
-
-  console.log("Product created successfully:", data)
-  return data as Product
 }
 
 export async function updateProduct(id: number, updates: Partial<Product>) {
-  const { data, error } = await supabase
-    .from("products")
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single()
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select()
+      .single()
 
-  if (error) throw error
-  return data as Product
+    if (error) {
+      console.error("Error updating product:", error)
+      throw new Error(`Failed to update product: ${error.message}`)
+    }
+
+    return data as Product
+  } catch (err: any) {
+    console.error("updateProduct error:", err)
+    throw new Error(err?.message || "Failed to update product")
+  }
 }
 
 export async function deleteProduct(id: number) {
-  const { error } = await supabase.from("products").delete().eq("id", id)
+  try {
+    const { error } = await supabase.from("products").delete().eq("id", id)
 
-  if (error) throw error
+    if (error) {
+      console.error("Error deleting product:", error)
+      throw new Error(`Failed to delete product: ${error.message}`)
+    }
+  } catch (err: any) {
+    console.error("deleteProduct error:", err)
+    throw new Error(err?.message || "Failed to delete product")
+  }
 }
 
 // Category functions
 export async function getCategories() {
-  const { data, error } = await supabase.from("categories").select("*").eq("is_active", true).order("name")
+  try {
+    const { data, error } = await supabase.from("categories").select("*").eq("is_active", true).order("name")
 
-  if (error) {
-    if (error.code === "42P01") return []
-    throw error
+    if (error) {
+      console.error("Error fetching categories:", error)
+      if (error.code === "42P01") return []
+      throw new Error(`Failed to fetch categories: ${error.message}`)
+    }
+    return data as Category[]
+  } catch (err: any) {
+    console.error("getCategories error:", err)
+    return []
   }
-  return data as Category[]
 }
 
 // Business settings functions
@@ -351,70 +538,85 @@ export async function updateAboutContent(updates: Partial<AboutContent>) {
   }
 }
 
-// Analytics functions - Made flexible to handle different table schemas
+// Analytics functions - Made resilient to missing tables
 export async function trackProductView(productId: number, userId?: string) {
   try {
-    // Try with minimal required fields first
+    // Check if table exists first
+    const exists = await tableExists("product_views")
+    if (!exists) {
+      console.log("product_views table does not exist, skipping tracking")
+      return
+    }
+
     const insertData: any = {
       product_id: productId,
     }
 
-    // Add optional fields if provided
     if (userId) {
       insertData.user_id = userId
     }
 
-    // Try to add ip_address if the column exists
-    try {
-      insertData.ip_address = "127.0.0.1"
-    } catch {
-      // If ip_address column doesn't exist, continue without it
-    }
-
     const { error } = await supabase.from("product_views").insert([insertData])
 
-    // Silently ignore all errors - analytics shouldn't break the app
+    if (error) {
+      console.log("Error tracking product view:", error.message)
+    }
   } catch (err) {
-    // Silently fail - analytics shouldn't break the app
+    console.log("trackProductView error:", err)
   }
 }
 
 export async function trackWebsiteVisit(pageUrl: string, userId?: string) {
   try {
-    // Try with minimal required fields first
+    // Check if table exists first
+    const exists = await tableExists("website_visits")
+    if (!exists) {
+      console.log("website_visits table does not exist, skipping tracking")
+      return
+    }
+
     const insertData: any = {
       page_url: pageUrl,
     }
 
-    // Add optional fields if provided
     if (userId) {
       insertData.user_id = userId
     }
 
-    // Try to add ip_address if the column exists
-    try {
-      insertData.ip_address = "127.0.0.1"
-    } catch {
-      // If ip_address column doesn't exist, continue without it
-    }
-
     const { error } = await supabase.from("website_visits").insert([insertData])
 
-    // Silently ignore all errors - analytics shouldn't break the app
+    if (error) {
+      console.log("Error tracking website visit:", error.message)
+    }
   } catch (err) {
-    // Silently fail - analytics shouldn't break the app
+    console.log("trackWebsiteVisit error:", err)
   }
 }
 
 export async function getLiveAnalytics() {
   try {
-    const [productsResult, usersResult, wishlistsResult, visitsResult, revenueResult] = await Promise.all([
+    // Check if analytics tables exist
+    const productViewsExists = await tableExists("product_views")
+    const websiteVisitsExists = await tableExists("website_visits")
+    const wishlistsExists = await tableExists("wishlists")
+
+    const [productsResult, usersResult, revenueResult] = await Promise.all([
       supabase.from("products").select("id", { count: "exact" }).eq("is_active", true),
       supabase.from("profiles").select("id", { count: "exact" }),
-      supabase.from("wishlists").select("id", { count: "exact" }),
-      supabase.from("website_visits").select("id", { count: "exact" }),
       supabase.from("products").select("price").eq("is_active", true),
     ])
+
+    // Only query analytics tables if they exist
+    let wishlistsResult = { count: 0 }
+    let visitsResult = { count: 0 }
+
+    if (wishlistsExists) {
+      wishlistsResult = await supabase.from("wishlists").select("id", { count: "exact" })
+    }
+
+    if (websiteVisitsExists) {
+      visitsResult = await supabase.from("website_visits").select("id", { count: "exact" })
+    }
 
     // Calculate estimated revenue (sum of all product prices)
     const totalRevenue = revenueResult.data?.reduce((sum, product) => sum + (product.price || 0), 0) || 0
@@ -440,6 +642,10 @@ export async function getLiveAnalytics() {
 
 export async function getProductAnalytics() {
   try {
+    // Check if analytics tables exist
+    const productViewsExists = await tableExists("product_views")
+    const wishlistsExists = await tableExists("wishlists")
+
     const { data: products, error: productsError } = await supabase
       .from("products")
       .select(`
@@ -455,24 +661,30 @@ export async function getProductAnalytics() {
 
     if (productsError) throw productsError
 
-    // Get view counts for each product
-    const { data: viewCounts, error: viewsError } = await supabase
-      .from("product_views")
-      .select("product_id")
-      .gte("viewed_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()) // Last 30 days
+    let viewCounts: any[] = []
+    let wishlistCounts: any[] = []
 
-    if (viewsError) throw viewsError
+    // Only get analytics if tables exist
+    if (productViewsExists) {
+      const { data, error } = await supabase
+        .from("product_views")
+        .select("product_id")
+        .gte("viewed_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
 
-    // Get wishlist counts for each product
-    const { data: wishlistCounts, error: wishlistError } = await supabase.from("wishlists").select("product_id")
+      if (!error) viewCounts = data || []
+    }
 
-    if (wishlistError) throw wishlistError
+    if (wishlistsExists) {
+      const { data, error } = await supabase.from("wishlists").select("product_id")
+
+      if (!error) wishlistCounts = data || []
+    }
 
     // Combine data
     const analytics =
       products?.map((product) => {
-        const views = viewCounts?.filter((v) => v.product_id === product.id).length || 0
-        const wishlists = wishlistCounts?.filter((w) => w.product_id === product.id).length || 0
+        const views = viewCounts.filter((v) => v.product_id === product.id).length || 0
+        const wishlists = wishlistCounts.filter((w) => w.product_id === product.id).length || 0
 
         return {
           ...product,
@@ -491,6 +703,9 @@ export async function getProductAnalytics() {
 
 export async function getCategoryAnalytics() {
   try {
+    // Check if analytics tables exist
+    const productViewsExists = await tableExists("product_views")
+
     const { data: categories, error } = await supabase
       .from("categories")
       .select(`
@@ -502,24 +717,26 @@ export async function getCategoryAnalytics() {
 
     if (error) throw error
 
-    // Get view counts by category
-    const { data: categoryViews, error: viewsError } = await supabase
-      .from("product_views")
-      .select(`
-        product_id,
-        products!inner(category)
-      `)
-      .gte("viewed_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+    let viewsByCategory: Record<string, number> = {}
 
-    if (viewsError) throw viewsError
+    // Only get view analytics if table exists
+    if (productViewsExists) {
+      const { data: categoryViews, error: viewsError } = await supabase
+        .from("product_views")
+        .select(`
+          product_id,
+          products!inner(category)
+        `)
+        .gte("viewed_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
 
-    // Calculate views per category
-    const viewsByCategory =
-      categoryViews?.reduce((acc: Record<string, number>, view: any) => {
-        const category = view.products.category
-        acc[category] = (acc[category] || 0) + 1
-        return acc
-      }, {}) || {}
+      if (!viewsError && categoryViews) {
+        viewsByCategory = categoryViews.reduce((acc: Record<string, number>, view: any) => {
+          const category = view.products.category
+          acc[category] = (acc[category] || 0) + 1
+          return acc
+        }, {})
+      }
+    }
 
     return (
       categories?.map((category) => ({
